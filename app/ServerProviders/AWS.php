@@ -2,7 +2,6 @@
 
 namespace App\ServerProviders;
 
-use App\Enums\OperatingSystem;
 use App\Exceptions\CouldNotConnectToProvider;
 use App\Facades\Notifier;
 use App\Notifications\FailedToDeleteServerFromProvider;
@@ -19,11 +18,9 @@ class AWS extends AbstractProvider
 
     protected EC2InstanceConnectClient $ec2InstanceConnectClient;
 
-    public function createValidationRules(array $input): array
+    public function createRules(array $input): array
     {
-        $rules = [
-            'os' => 'required|in:'.implode(',', OperatingSystem::getValues()),
-        ];
+        $rules = [];
         // plans
         $plans = [];
         foreach (config('serverproviders.aws.plans') as $plan) {
@@ -79,14 +76,18 @@ class AWS extends AbstractProvider
         }
     }
 
-    public function plans(): array
+    public function plans(?string $region): array
     {
-        return config('serverproviders.aws.plans');
+        return collect(config('serverproviders.aws.plans'))
+            ->mapWithKeys(fn ($value) => [$value['value'] => $value['title']])
+            ->toArray();
     }
 
     public function regions(): array
     {
-        return config('serverproviders.aws.regions');
+        return collect(config('serverproviders.aws.regions'))
+            ->mapWithKeys(fn ($value) => [$value['value'] => $value['title']])
+            ->toArray();
     }
 
     public function create(): void

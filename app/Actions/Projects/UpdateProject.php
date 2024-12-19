@@ -10,6 +10,10 @@ class UpdateProject
 {
     public function update(Project $project, array $input): Project
     {
+        if (isset($input['name'])) {
+            $input['name'] = strtolower($input['name']);
+        }
+
         $this->validate($project, $input);
 
         $project->name = $input['name'];
@@ -19,15 +23,21 @@ class UpdateProject
         return $project;
     }
 
-    private function validate(Project $project, array $input): void
+    public static function rules(Project $project): array
     {
-        Validator::make($input, [
+        return [
             'name' => [
                 'required',
                 'string',
                 'max:255',
-                Rule::unique('projects')->ignore($project->id),
+                Rule::unique('projects', 'name')->ignore($project->id),
+                'lowercase:projects,name',
             ],
-        ])->validate();
+        ];
+    }
+
+    private function validate(Project $project, array $input): void
+    {
+        Validator::make($input, self::rules($project))->validate();
     }
 }

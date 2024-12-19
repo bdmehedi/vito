@@ -1,24 +1,28 @@
-import './bootstrap';
-// import Echo from "laravel-echo"
-// import Pusher from "pusher-js"
-import Alpine from 'alpinejs';
-import Clipboard from "@ryangjchandler/alpine-clipboard";
+import CodeEditorAlpinePlugin from "./components/editor";
 
-Alpine.plugin(Clipboard)
+document.addEventListener("alpine:init", () => {
+    window.Alpine.plugin(CodeEditorAlpinePlugin);
+});
 
-// window.Echo = new Echo({
-//     broadcaster: 'pusher',
-//     key: 'app-key',
-//     wsHost: 'localhost',
-//     wsPort: 6001,
-//     cluster: '',
-//     forceTLS: false,
-//     disableStats: true,
-// });
-//
-// window.Pusher = Pusher;
+window.copyToClipboard = async function (text) {
+    try {
+        await navigator.clipboard.writeText(text);
+    } catch (err) {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
 
-window.Alpine = Alpine;
+        textArea.style.position = "absolute";
+        textArea.style.left = "-999999px";
 
-Alpine.start();
+        document.body.prepend(textArea);
+        textArea.select();
 
+        try {
+            document.execCommand("copy");
+        } catch (error) {
+            //
+        } finally {
+            textArea.remove();
+        }
+    }
+};

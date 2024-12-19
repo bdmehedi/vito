@@ -2,45 +2,64 @@
 
 namespace App\Actions\PHP;
 
+use App\Exceptions\SSHCommandError;
+use App\Models\Server;
 use App\Models\Service;
-use Illuminate\Support\Facades\Validator;
+use App\SSH\Services\PHP\PHP;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class InstallPHPExtension
 {
-    /**
-     * @throws ValidationException
-     */
-    public function handle(Service $service, array $input): Service
+    public function install(Server $server, array $input): Service
     {
+        /** @var Service $service */
+        $service = $server->php($input['version']);
+
+        if (in_array($input['extension'], $service->type_data['extensions'] ?? [])) {
+            throw ValidationException::withMessages([
+                'extension' => 'The extension is already installed.',
+            ]);
+        }
+
         $typeData = $service->type_data;
         $typeData['extensions'] = $typeData['extensions'] ?? [];
+        $typeData['extensions'][] = $input['extension'];
         $service->type_data = $typeData;
         $service->save();
 
-        $this->validate($service, $input);
-
-        $service->handler()->installExtension($input['name']);
+        dispatch(
+            /**
+             * @throws SSHCommandError
+             */
+            function () use ($service, $input) {
+                /** @var PHP $handler */
+                $handler = $service->handler();
+                $handler->installExtension($input['extension']);
+            })->catch(function () use ($service, $input) {
+                $service->refresh();
+                $typeData = $service->type_data;
+                $typeData['extensions'] = array_values(array_diff($typeData['extensions'], [$input['extension']]));
+                $service->type_data = $typeData;
+                $service->save();
+            })->onConnection('ssh');
 
         return $service;
     }
 
-    /**
-     * @throws ValidationException
-     */
-    private function validate(Service $service, array $input): void
+    public static function rules(Server $server): array
     {
-        Validator::make($input, [
-            'name' => [
+        return [
+            'extension' => [
                 'required',
-                'in:'.implode(',', config('core.php_extensions')),
+                Rule::in(config('core.php_extensions')),
             ],
-        ])->validateWithBag('installPHPExtension');
-
-        if (in_array($input['name'], $service->type_data['extensions'])) {
-            throw ValidationException::withMessages(
-                ['name' => __('This extension already installed')]
-            )->errorBag('installPHPExtension');
-        }
+            'version' => [
+                'required',
+                Rule::exists('services', 'version')
+                    ->where('server_id', $server->id)
+                    ->where('type', 'php'),
+            ],
+        ];
     }
 }

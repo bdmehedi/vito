@@ -7,7 +7,6 @@ use App\Enums\DatabaseStatus;
 use App\Models\Backup;
 use App\Models\Server;
 use Illuminate\Auth\Access\AuthorizationException;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -17,30 +16,25 @@ class CreateBackup
      * @throws AuthorizationException
      * @throws ValidationException
      */
-    public function create($type, Server $server, array $input): Backup
+    public function create(Server $server, array $input): Backup
     {
-        $this->validate($type, $server, $input);
-
         $backup = new Backup([
-            'type' => $type,
+            'type' => 'database',
             'server_id' => $server->id,
             'database_id' => $input['database'] ?? null,
             'storage_id' => $input['storage'],
-            'interval' => $input['interval'] == 'custom' ? $input['custom'] : $input['interval'],
+            'interval' => $input['interval'] == 'custom' ? $input['custom_interval'] : $input['interval'],
             'keep_backups' => $input['keep'],
             'status' => BackupStatus::RUNNING,
         ]);
         $backup->save();
 
-        $backup->run();
+        app(RunBackup::class)->run($backup);
 
         return $backup;
     }
 
-    /**
-     * @throws ValidationException
-     */
-    private function validate($type, Server $server, array $input): void
+    public static function rules(Server $server, array $input): array
     {
         $rules = [
             'storage' => [
@@ -54,28 +48,21 @@ class CreateBackup
             ],
             'interval' => [
                 'required',
-                Rule::in([
-                    '0 * * * *',
-                    '0 0 * * *',
-                    '0 0 * * 0',
-                    '0 0 1 * *',
-                    'custom',
-                ]),
+                Rule::in(array_keys(config('core.cronjob_intervals'))),
             ],
-        ];
-        if ($input['interval'] == 'custom') {
-            $rules['custom'] = [
-                'required',
-            ];
-        }
-        if ($type === 'database') {
-            $rules['database'] = [
+            'database' => [
                 'required',
                 Rule::exists('databases', 'id')
                     ->where('server_id', $server->id)
                     ->where('status', DatabaseStatus::READY),
+            ],
+        ];
+        if ($input['interval'] == 'custom') {
+            $rules['custom_interval'] = [
+                'required',
             ];
         }
-        Validator::make($input, $rules)->validate();
+
+        return $rules;
     }
 }

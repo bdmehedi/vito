@@ -6,32 +6,28 @@ use App\Enums\CronjobStatus;
 use App\Models\CronJob;
 use App\Models\Server;
 use App\ValidationRules\CronRule;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\ValidationException;
 
 class CreateCronJob
 {
     public function create(Server $server, array $input): void
     {
-        $this->validate($input);
-
         $cronJob = new CronJob([
             'server_id' => $server->id,
             'user' => $input['user'],
             'command' => $input['command'],
-            'frequency' => $input['frequency'],
+            'frequency' => $input['frequency'] == 'custom' ? $input['custom'] : $input['frequency'],
             'status' => CronjobStatus::CREATING,
         ]);
         $cronJob->save();
-        $cronJob->addToServer();
+
+        $server->cron()->update($cronJob->user, CronJob::crontab($server, $cronJob->user));
+        $cronJob->status = CronjobStatus::READY;
+        $cronJob->save();
     }
 
-    /**
-     * @throws ValidationException
-     */
-    private function validate(array $input): void
+    public static function rules(array $input): array
     {
-        Validator::make($input, [
+        $rules = [
             'command' => [
                 'required',
             ],
@@ -41,8 +37,17 @@ class CreateCronJob
             ],
             'frequency' => [
                 'required',
-                new CronRule(),
+                new CronRule(acceptCustom: true),
             ],
-        ])->validateWithBag('createCronJob');
+        ];
+
+        if (isset($input['frequency']) && $input['frequency'] == 'custom') {
+            $rules['custom'] = [
+                'required',
+                new CronRule,
+            ];
+        }
+
+        return $rules;
     }
 }

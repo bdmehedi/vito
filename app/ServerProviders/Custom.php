@@ -9,14 +9,13 @@ use Illuminate\Validation\Rule;
 
 class Custom extends AbstractProvider
 {
-    public function createValidationRules(array $input): array
+    public function createRules(array $input): array
     {
         return [
             'ip' => [
                 'required',
-                'ip',
                 Rule::unique('servers', 'ip'),
-                new RestrictedIPAddressesRule(),
+                new RestrictedIPAddressesRule,
             ],
             'port' => [
                 'required',
@@ -47,7 +46,7 @@ class Custom extends AbstractProvider
         return true;
     }
 
-    public function plans(): array
+    public function plans(?string $region): array
     {
         return [];
     }

@@ -2,7 +2,8 @@
 
 namespace App\NotificationChannels;
 
-use App\Contracts\Notification;
+use App\Models\NotificationChannel;
+use App\Notifications\NotificationInterface;
 use Illuminate\Support\Facades\Http;
 use Throwable;
 
@@ -10,16 +11,15 @@ class Telegram extends AbstractNotificationChannel
 {
     protected string $apiUrl = 'https://api.telegram.org/bot';
 
-    public function channel(): string
-    {
-        return 'telegram';
-    }
-
     public function createRules(array $input): array
     {
         return [
-            'bot_token' => 'required|string',
-            'chat_id' => 'required',
+            'bot_token' => [
+                'required',
+            ],
+            'chat_id' => [
+                'required',
+            ],
         ];
     }
 
@@ -50,8 +50,10 @@ class Telegram extends AbstractNotificationChannel
         return true;
     }
 
-    public function send(object $notifiable, Notification $notification): void
+    public function send(object $notifiable, NotificationInterface $notification): void
     {
+        /** @var NotificationChannel $notifiable */
+        $this->notificationChannel = $notifiable;
         $this->sendToTelegram($notification->toTelegram($notifiable));
     }
 
@@ -62,6 +64,6 @@ class Telegram extends AbstractNotificationChannel
             'text' => $text,
             'parse_mode' => 'markdown',
             'disable_web_page_preview' => true,
-        ]);
+        ])->throw();
     }
 }

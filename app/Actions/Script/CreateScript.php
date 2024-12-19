@@ -4,38 +4,27 @@ namespace App\Actions\Script;
 
 use App\Models\Script;
 use App\Models\User;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\ValidationException;
 
 class CreateScript
 {
-    /**
-     * @throws ValidationException
-     */
-    public function handle(User $creator, array $input): Script
+    public function create(User $user, array $input): Script
     {
-        $this->validateInputs($input);
-
         $script = new Script([
-            'user_id' => $creator->id,
+            'user_id' => $user->id,
             'name' => $input['name'],
             'content' => $input['content'],
+            'project_id' => isset($input['global']) && $input['global'] ? null : $user->current_project_id,
         ]);
         $script->save();
 
         return $script;
     }
 
-    /**
-     * @throws ValidationException
-     */
-    private function validateInputs(array $input): void
+    public static function rules(): array
     {
-        $rules = [
-            'name' => 'required',
-            'content' => 'required',
+        return [
+            'name' => ['required', 'string', 'max:255'],
+            'content' => ['required', 'string'],
         ];
-
-        Validator::make($input, $rules)->validateWithBag('createScript');
     }
 }

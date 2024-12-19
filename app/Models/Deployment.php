@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\DeploymentStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -37,8 +38,10 @@ class Deployment extends AbstractModel
         'commit_data' => 'json',
     ];
 
-    protected $appends = [
-        'commit_id_short',
+    public static array $statusColors = [
+        DeploymentStatus::DEPLOYING => 'warning',
+        DeploymentStatus::FINISHED => 'success',
+        DeploymentStatus::FAILED => 'danger',
     ];
 
     public function site(): BelongsTo
@@ -54,14 +57,5 @@ class Deployment extends AbstractModel
     public function log(): BelongsTo
     {
         return $this->belongsTo(ServerLog::class, 'log_id');
-    }
-
-    public function getCommitIdShortAttribute(): string
-    {
-        if ($this->commit_id) {
-            return substr($this->commit_id, 0, 7);
-        }
-
-        return '';
     }
 }

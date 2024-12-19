@@ -21,11 +21,11 @@ class ServerDisconnected extends AbstractNotification
         ]);
     }
 
-    public function toMail(object $notifiable): MailMessage
+    public function toEmail(object $notifiable): MailMessage
     {
         return (new MailMessage)
             ->subject(__('Server disconnected!'))
             ->line("We've disconnected from your server [".$this->server->name.'].')
-            ->line('Please check your sever is online and make sure that has our public keys in it');
+            ->line('Please check your server is online and make sure that has our public keys in it');
     }
 }

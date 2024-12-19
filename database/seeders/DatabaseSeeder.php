@@ -8,9 +8,12 @@ use App\Models\Server;
 use App\Models\Site;
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Foundation\Testing\WithFaker;
 
 class DatabaseSeeder extends Seeder
 {
+    use WithFaker;
+
     /**
      * Seed the application's database.
      */
@@ -20,6 +23,12 @@ class DatabaseSeeder extends Seeder
             'name' => 'Test User',
             'email' => 'user@example.com',
         ]);
+
+        $this->createResources($user);
+    }
+
+    private function createResources(User $user): void
+    {
         $server = Server::factory()->create([
             'user_id' => $user->id,
             'project_id' => $user->currentProject->id,
@@ -42,6 +51,12 @@ class DatabaseSeeder extends Seeder
         $server->services()->create([
             'type' => 'webserver',
             'name' => 'nginx',
+            'version' => 'latest',
+            'status' => ServiceStatus::READY,
+        ]);
+        $server->services()->create([
+            'type' => 'firewall',
+            'name' => 'ufw',
             'version' => 'latest',
             'status' => ServiceStatus::READY,
         ]);

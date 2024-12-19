@@ -1,36 +1,12 @@
 <?php
 
-use Illuminate\Contracts\Database\Query\Expression;
-use Illuminate\Support\Str;
-
-function random_color(): string
-{
-    return '#'.str_pad(dechex(mt_rand(0, 0xFFFFFF)), 6, '0', STR_PAD_LEFT);
-}
-
-function get_hostname_from_repo($repo): string
-{
-    $repo = Str::after($repo, '@');
-
-    return Str::before($repo, ':');
-}
-
-function generate_uid(): string
-{
-    return hash('sha256', uniqid(rand(1111111111, 9999999999), true).Str::random(64).strtotime('now'));
-}
-
-// /**
-//  * @param $privateKeyPath
-//  * @return array|string|string[]
-//  */
-// function generate_public_key($privateKeyPath)
-// {
-//     $privateKey = openssl_pkey_get_private(file_get_contents($privateKeyPath));
-//     $publicKey = openssl_pkey_get_details($privateKey);
-//
-//     return $publicKey['key'];
-// }
+use App\Exceptions\SSHError;
+use App\Helpers\HtmxResponse;
+use Filament\Notifications\Actions\Action;
+use Filament\Notifications\Notification;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Route;
 
 function generate_public_key($privateKeyPath, $publicKeyPath): void
 {
@@ -44,16 +20,6 @@ function generate_key_pair($path): void
     chmod($path, 0400);
 }
 
-function make_bash_script($commands): string
-{
-    $script = '';
-    foreach (preg_split("/((\r?\n)|(\r\n?))/", $commands) as $line) {
-        $script .= 'if ! '.$line."; then\n echo 'VITO_SSH_ERROR' && exit 1 \nfi"."\n";
-    }
-
-    return $script;
-}
-
 /**
  * @throws Exception
  */
@@ -65,9 +31,144 @@ function date_with_timezone($date, $timezone): string
     return $dt->format('Y-m-d H:i:s');
 }
 
-function cast_to_json(array $json): Illuminate\Database\Query\Expression|Expression
+function htmx(): HtmxResponse
 {
-    $json = addslashes(json_encode($json));
+    return new HtmxResponse;
+}
 
-    return DB::raw("CAST('{$json}' AS JSON)");
+function vito_version(): string
+{
+    $version = exec('git describe --tags');
+    if (str($version)->contains('-')) {
+        return str($version)->before('-').' (dev)';
+    }
+
+    return $version;
+}
+
+function convert_time_format($string): string
+{
+    $string = preg_replace('/(\d+)m/', '$1 minutes', $string);
+    $string = preg_replace('/(\d+)s/', '$1 seconds', $string);
+    $string = preg_replace('/(\d+)d/', '$1 days', $string);
+
+    return preg_replace('/(\d+)h/', '$1 hours', $string);
+}
+
+function get_public_key_content(): string
+{
+    if (! file_exists(storage_path(config('core.ssh_public_key_name')))) {
+        Artisan::call('ssh-key:generate --force');
+    }
+
+    return str(file_get_contents(storage_path(config('core.ssh_public_key_name'))))
+        ->replace("\n", '')
+        ->toString();
+}
+
+function run_action(object $static, Closure $callback): void
+{
+    try {
+        $callback();
+    } catch (SSHError $e) {
+        Notification::make()
+            ->danger()
+            ->title($e->getMessage())
+            ->body($e->getLog()?->getContent(30))
+            ->actions([
+                Action::make('View Logs')
+                    ->url(App\Web\Pages\Servers\Logs\Index::getUrl([
+                        'server' => $e->getLog()?->server_id,
+                    ]))
+                    ->openUrlInNewTab(),
+            ])
+            ->send();
+
+        if (method_exists($static, 'halt')) {
+            $reflectionMethod = new ReflectionMethod($static, 'halt');
+            $reflectionMethod->invoke($static);
+        }
+    }
+}
+
+/**
+ * Credit: https://gist.github.com/lorenzos/1711e81a9162320fde20
+ */
+function tail($filepath, $lines = 1, $adaptive = true): string
+{
+    // Open file
+    $f = @fopen($filepath, 'rb');
+    if ($f === false) {
+        return '';
+    }
+
+    // Sets buffer size, according to the number of lines to retrieve.
+    // This gives a performance boost when reading a few lines from the file.
+    if (! $adaptive) {
+        $buffer = 4096;
+    } else {
+        $buffer = ($lines < 2 ? 64 : ($lines < 10 ? 512 : 4096));
+    }
+
+    // Jump to last character
+    fseek($f, -1, SEEK_END);
+
+    // Read it and adjust line number if necessary
+    // (Otherwise the result would be wrong if file doesn't end with a blank line)
+    if (fread($f, 1) != "\n") {
+        $lines -= 1;
+    }
+
+    // Start reading
+    $output = '';
+    $chunk = '';
+
+    // While we would like more
+    while (ftell($f) > 0 && $lines >= 0) {
+        // Figure out how far back we should jump
+        $seek = min(ftell($f), $buffer);
+
+        // Do the jump (backwards, relative to where we are)
+        fseek($f, -$seek, SEEK_CUR);
+
+        // Read a chunk and prepend it to our output
+        $output = ($chunk = fread($f, $seek)).$output;
+
+        // Jump back to where we started reading
+        fseek($f, -mb_strlen($chunk, '8bit'), SEEK_CUR);
+
+        // Decrease our line counter
+        $lines -= substr_count($chunk, "\n");
+    }
+
+    // While we have too many lines
+    // (Because of buffer size we might have read too many)
+    while ($lines++ < 0) {
+        // Find first newline and remove all text before that
+        $output = substr($output, strpos($output, "\n") + 1);
+    }
+
+    // Close file and return
+    fclose($f);
+
+    return trim($output);
+}
+
+function get_from_route(string $modelName, string $routeKey): mixed
+{
+    $model = request()->route($routeKey);
+
+    if (! $model) {
+        $model = Route::getRoutes()->match(Request::create(url()->previous()))->parameter($routeKey);
+    }
+
+    if ($model instanceof $modelName) {
+        return $model;
+    }
+
+    if ($model) {
+        return $modelName::query()->find($model);
+    }
+
+    return null;
 }

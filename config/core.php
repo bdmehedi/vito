@@ -1,38 +1,5 @@
 <?php
 
-use App\Jobs\Installation\InstallMariadb;
-use App\Jobs\Installation\InstallMysql;
-use App\Jobs\Installation\InstallNginx;
-use App\Jobs\Installation\InstallPHP;
-use App\Jobs\Installation\InstallPHPMyAdmin;
-use App\Jobs\Installation\InstallRedis;
-use App\Jobs\Installation\InstallSupervisor;
-use App\Jobs\Installation\InstallUfw;
-use App\Jobs\Installation\UninstallPHP;
-use App\Jobs\Installation\UninstallPHPMyAdmin;
-use App\NotificationChannels\Discord;
-use App\NotificationChannels\Email;
-use App\NotificationChannels\Slack;
-use App\NotificationChannels\Telegram;
-use App\ServerProviders\AWS;
-use App\ServerProviders\DigitalOcean;
-use App\ServerProviders\Hetzner;
-use App\ServerProviders\Linode;
-use App\ServerProviders\Vultr;
-use App\ServiceHandlers\Database\Mysql;
-use App\ServiceHandlers\Firewall\Ufw;
-use App\ServiceHandlers\PHP;
-use App\ServiceHandlers\ProcessManager\Supervisor;
-use App\ServiceHandlers\Webserver\Nginx;
-use App\SiteTypes\Laravel;
-use App\SiteTypes\PHPSite;
-use App\SiteTypes\Wordpress;
-use App\SourceControlProviders\Bitbucket;
-use App\SourceControlProviders\Github;
-use App\SourceControlProviders\Gitlab;
-use App\StorageProviders\Dropbox;
-use App\StorageProviders\FTP;
-
 return [
     /*
      * SSH
@@ -40,20 +7,20 @@ return [
     'ssh_user' => env('SSH_USER', 'vito'),
     'ssh_public_key_name' => env('SSH_PUBLIC_KEY_NAME', 'ssh-public.key'),
     'ssh_private_key_name' => env('SSH_PRIVATE_KEY_NAME', 'ssh-private.pem'),
-    'logs_disk' => env('SERVER_LOGS_DISK', 'server-logs-local'), // should to be FilesystemAdapter storage
-    'key_pairs_disk' => env('KEY_PAIRS_DISK', 'key-pairs-local'), // should to be FilesystemAdapter storage
+    'logs_disk' => env('SERVER_LOGS_DISK', 'server-logs'), // should be FilesystemAdapter storage
+    'key_pairs_disk' => env('KEY_PAIRS_DISK', 'key-pairs'), // should be FilesystemAdapter storage
 
     /*
      * General
      */
     'operating_systems' => [
-        // 'ubuntu_18',
-        'ubuntu_20',
-        'ubuntu_22',
+        \App\Enums\OperatingSystem::UBUNTU20,
+        \App\Enums\OperatingSystem::UBUNTU22,
+        \App\Enums\OperatingSystem::UBUNTU24,
     ],
     'webservers' => ['none', 'nginx'],
     'php_versions' => [
-        'none',
+        // 'none',
         // '5.6',
         '7.0',
         '7.1',
@@ -63,133 +30,272 @@ return [
         '8.0',
         '8.1',
         '8.2',
+        '8.3',
     ],
-    'databases' => ['none', 'mysql57', 'mysql80', 'mariadb'],
+    'databases' => [
+        'none',
+        'mysql57',
+        'mysql80',
+        'mariadb103',
+        'mariadb104',
+        'mariadb106',
+        'mariadb1011',
+        'mariadb114',
+        'postgresql12',
+        'postgresql13',
+        'postgresql14',
+        'postgresql15',
+        'postgresql16',
+    ],
     'databases_name' => [
+        'none' => 'none',
         'mysql57' => 'mysql',
         'mysql80' => 'mysql',
-        'mariadb' => 'mariadb',
+        'mariadb103' => 'mariadb',
+        'mariadb104' => 'mariadb',
+        'mariadb106' => 'mariadb',
+        'mariadb1011' => 'mariadb',
+        'mariadb114' => 'mariadb',
+        'postgresql12' => 'postgresql',
+        'postgresql13' => 'postgresql',
+        'postgresql14' => 'postgresql',
+        'postgresql15' => 'postgresql',
+        'postgresql16' => 'postgresql',
     ],
     'databases_version' => [
+        'none' => '',
         'mysql57' => '5.7',
         'mysql80' => '8.0',
         'mariadb' => '10.3',
+        'mariadb103' => '10.3',
+        'mariadb104' => '10.4',
+        'mariadb106' => '10.6',
+        'mariadb1011' => '10.11',
+        'mariadb114' => '11.4',
+        'postgresql12' => '12',
+        'postgresql13' => '13',
+        'postgresql14' => '14',
+        'postgresql15' => '15',
+        'postgresql16' => '16',
+    ],
+    'database_features' => [
+        'remote' => [
+            'mysql',
+            'mariadb',
+        ],
     ],
 
     /*
      * Server
      */
-    'server_types' => \App\Enums\ServerType::getValues(),
+    'server_types' => [
+        \App\Enums\ServerType::REGULAR,
+        \App\Enums\ServerType::DATABASE,
+    ],
     'server_types_class' => [
         \App\Enums\ServerType::REGULAR => \App\ServerTypes\Regular::class,
         \App\Enums\ServerType::DATABASE => \App\ServerTypes\Database::class,
     ],
-    'server_providers' => \App\Enums\ServerProvider::getValues(),
+    'server_providers' => [
+        \App\Enums\ServerProvider::CUSTOM,
+        \App\Enums\ServerProvider::AWS,
+        \App\Enums\ServerProvider::LINODE,
+        \App\Enums\ServerProvider::DIGITALOCEAN,
+        \App\Enums\ServerProvider::VULTR,
+        \App\Enums\ServerProvider::HETZNER,
+    ],
     'server_providers_class' => [
         \App\Enums\ServerProvider::CUSTOM => \App\ServerProviders\Custom::class,
-        \App\Enums\ServerProvider::AWS => AWS::class,
-        \App\Enums\ServerProvider::LINODE => Linode::class,
-        \App\Enums\ServerProvider::DIGITALOCEAN => DigitalOcean::class,
-        \App\Enums\ServerProvider::VULTR => Vultr::class,
-        \App\Enums\ServerProvider::HETZNER => Hetzner::class,
+        \App\Enums\ServerProvider::AWS => \App\ServerProviders\AWS::class,
+        \App\Enums\ServerProvider::LINODE => \App\ServerProviders\Linode::class,
+        \App\Enums\ServerProvider::DIGITALOCEAN => \App\ServerProviders\DigitalOcean::class,
+        \App\Enums\ServerProvider::VULTR => \App\ServerProviders\Vultr::class,
+        \App\Enums\ServerProvider::HETZNER => \App\ServerProviders\Hetzner::class,
     ],
     'server_providers_default_user' => [
         'custom' => [
-            'ubuntu_18' => 'root',
-            'ubuntu_20' => 'root',
-            'ubuntu_22' => 'root',
+            \App\Enums\OperatingSystem::UBUNTU20 => 'root',
+            \App\Enums\OperatingSystem::UBUNTU22 => 'root',
+            \App\Enums\OperatingSystem::UBUNTU24 => 'root',
         ],
         'aws' => [
-            'ubuntu_18' => 'ubuntu',
-            'ubuntu_20' => 'ubuntu',
-            'ubuntu_22' => 'ubuntu',
+            \App\Enums\OperatingSystem::UBUNTU20 => 'ubuntu',
+            \App\Enums\OperatingSystem::UBUNTU22 => 'ubuntu',
+            \App\Enums\OperatingSystem::UBUNTU24 => 'ubuntu',
         ],
         'linode' => [
-            'ubuntu_18' => 'root',
-            'ubuntu_20' => 'root',
-            'ubuntu_22' => 'root',
+            \App\Enums\OperatingSystem::UBUNTU20 => 'root',
+            \App\Enums\OperatingSystem::UBUNTU22 => 'root',
+            \App\Enums\OperatingSystem::UBUNTU24 => 'root',
         ],
         'digitalocean' => [
-            'ubuntu_18' => 'root',
-            'ubuntu_20' => 'root',
-            'ubuntu_22' => 'root',
+            \App\Enums\OperatingSystem::UBUNTU20 => 'root',
+            \App\Enums\OperatingSystem::UBUNTU22 => 'root',
+            \App\Enums\OperatingSystem::UBUNTU24 => 'root',
         ],
         'vultr' => [
-            'ubuntu_18' => 'root',
-            'ubuntu_20' => 'root',
-            'ubuntu_22' => 'root',
+            \App\Enums\OperatingSystem::UBUNTU20 => 'root',
+            \App\Enums\OperatingSystem::UBUNTU22 => 'root',
+            \App\Enums\OperatingSystem::UBUNTU24 => 'root',
         ],
         'hetzner' => [
-            'ubuntu_18' => 'root',
-            'ubuntu_20' => 'root',
-            'ubuntu_22' => 'root',
+            \App\Enums\OperatingSystem::UBUNTU20 => 'root',
+            \App\Enums\OperatingSystem::UBUNTU22 => 'root',
+            \App\Enums\OperatingSystem::UBUNTU24 => 'root',
         ],
     ],
 
     /*
      * Service
      */
-    'service_installers' => [
-        'nginx' => InstallNginx::class,
-        'mysql' => InstallMysql::class,
-        'mariadb' => InstallMariadb::class,
-        'php' => InstallPHP::class,
-        'redis' => InstallRedis::class,
-        'supervisor' => InstallSupervisor::class,
-        'ufw' => InstallUfw::class,
-        'phpmyadmin' => InstallPHPMyAdmin::class,
-    ],
-    'service_uninstallers' => [
-        'phpmyadmin' => UninstallPHPMyAdmin::class,
-        'php' => UninstallPHP::class,
+    'service_types' => [
+        'nginx' => 'webserver',
+        'mysql' => 'database',
+        'mariadb' => 'database',
+        'postgresql' => 'database',
+        'redis' => 'memory_database',
+        'php' => 'php',
+        'ufw' => 'firewall',
+        'supervisor' => 'process_manager',
+        'vito-agent' => 'monitoring',
+        'remote-monitor' => 'monitoring',
     ],
     'service_handlers' => [
-        'nginx' => Nginx::class,
-        'mysql' => Mysql::class,
-        'mariadb' => Mysql::class,
-        'php' => PHP::class,
-        'ufw' => Ufw::class,
-        'supervisor' => Supervisor::class,
+        'nginx' => \App\SSH\Services\Webserver\Nginx::class,
+        'mysql' => \App\SSH\Services\Database\Mysql::class,
+        'mariadb' => \App\SSH\Services\Database\Mariadb::class,
+        'postgresql' => \App\SSH\Services\Database\Postgresql::class,
+        'redis' => \App\SSH\Services\Redis\Redis::class,
+        'php' => \App\SSH\Services\PHP\PHP::class,
+        'ufw' => \App\SSH\Services\Firewall\Ufw::class,
+        'supervisor' => \App\SSH\Services\ProcessManager\Supervisor::class,
+        'vito-agent' => \App\SSH\Services\Monitoring\VitoAgent\VitoAgent::class,
+        'remote-monitor' => \App\SSH\Services\Monitoring\RemoteMonitor\RemoteMonitor::class,
+    ],
+    'service_versions' => [
+        'nginx' => [
+            'latest',
+        ],
+        'mysql' => [
+            '5.7',
+            '8.0',
+        ],
+        'mariadb' => [
+            '10.3',
+            '10.4',
+            '10.6',
+            '10.11',
+            '11.4',
+        ],
+        'postgresql' => [
+            '12',
+            '13',
+            '14',
+            '15',
+            '16',
+        ],
+        'redis' => [
+            'latest',
+        ],
+        'php' => [
+            '5.6',
+            '7.0',
+            '7.1',
+            '7.2',
+            '7.3',
+            '7.4',
+            '8.0',
+            '8.1',
+            '8.2',
+            '8.3',
+        ],
+        'ufw' => [
+            'latest',
+        ],
+        'supervisor' => [
+            'latest',
+        ],
+        'vito-agent' => [
+            'latest',
+        ],
+        'remote-monitor' => [
+            'latest',
+        ],
     ],
     'service_units' => [
         'nginx' => [
-            'ubuntu_18' => [
+            \App\Enums\OperatingSystem::UBUNTU20 => [
                 'latest' => 'nginx',
             ],
-            'ubuntu_20' => [
+            \App\Enums\OperatingSystem::UBUNTU22 => [
                 'latest' => 'nginx',
             ],
-            'ubuntu_22' => [
+            \App\Enums\OperatingSystem::UBUNTU24 => [
                 'latest' => 'nginx',
             ],
         ],
         'mysql' => [
-            'ubuntu_18' => [
+            \App\Enums\OperatingSystem::UBUNTU20 => [
                 '5.7' => 'mysql',
                 '8.0' => 'mysql',
             ],
-            'ubuntu_20' => [
+            \App\Enums\OperatingSystem::UBUNTU22 => [
                 '5.7' => 'mysql',
                 '8.0' => 'mysql',
             ],
-            'ubuntu_22' => [
+            \App\Enums\OperatingSystem::UBUNTU24 => [
                 '5.7' => 'mysql',
                 '8.0' => 'mysql',
             ],
         ],
         'mariadb' => [
-            'ubuntu_18' => [
+            \App\Enums\OperatingSystem::UBUNTU20 => [
                 '10.3' => 'mariadb',
+                '10.4' => 'mariadb',
+                '10.6' => 'mariadb',
+                '10.11' => 'mariadb',
+                '11.4' => 'mariadb',
             ],
-            'ubuntu_20' => [
+            \App\Enums\OperatingSystem::UBUNTU22 => [
                 '10.3' => 'mariadb',
+                '10.4' => 'mariadb',
+                '10.6' => 'mariadb',
+                '10.11' => 'mariadb',
+                '11.4' => 'mariadb',
             ],
-            'ubuntu_22' => [
+            \App\Enums\OperatingSystem::UBUNTU24 => [
                 '10.3' => 'mariadb',
+                '10.4' => 'mariadb',
+                '10.6' => 'mariadb',
+                '10.11' => 'mariadb',
+                '11.4' => 'mariadb',
+            ],
+        ],
+        'postgresql' => [
+            \App\Enums\OperatingSystem::UBUNTU20 => [
+                '12' => 'postgresql',
+                '13' => 'postgresql',
+                '14' => 'postgresql',
+                '15' => 'postgresql',
+                '16' => 'postgresql',
+            ],
+            \App\Enums\OperatingSystem::UBUNTU22 => [
+                '12' => 'postgresql',
+                '13' => 'postgresql',
+                '14' => 'postgresql',
+                '15' => 'postgresql',
+                '16' => 'postgresql',
+            ],
+            \App\Enums\OperatingSystem::UBUNTU24 => [
+                '12' => 'postgresql',
+                '13' => 'postgresql',
+                '14' => 'postgresql',
+                '15' => 'postgresql',
+                '16' => 'postgresql',
             ],
         ],
         'php' => [
-            'ubuntu_18' => [
+            \App\Enums\OperatingSystem::UBUNTU20 => [
                 '5.6' => 'php5.6-fpm',
                 '7.0' => 'php7.0-fpm',
                 '7.1' => 'php7.1-fpm',
@@ -198,9 +304,9 @@ return [
                 '7.4' => 'php7.4-fpm',
                 '8.0' => 'php8.0-fpm',
                 '8.1' => 'php8.1-fpm',
-                '8.2' => 'php8.2-fpm',
+                '8.3' => 'php8.3-fpm',
             ],
-            'ubuntu_20' => [
+            \App\Enums\OperatingSystem::UBUNTU22 => [
                 '5.6' => 'php5.6-fpm',
                 '7.0' => 'php7.0-fpm',
                 '7.1' => 'php7.1-fpm',
@@ -210,8 +316,9 @@ return [
                 '8.0' => 'php8.0-fpm',
                 '8.1' => 'php8.1-fpm',
                 '8.2' => 'php8.2-fpm',
+                '8.3' => 'php8.3-fpm',
             ],
-            'ubuntu_22' => [
+            \App\Enums\OperatingSystem::UBUNTU24 => [
                 '5.6' => 'php5.6-fpm',
                 '7.0' => 'php7.0-fpm',
                 '7.1' => 'php7.1-fpm',
@@ -221,39 +328,51 @@ return [
                 '8.0' => 'php8.0-fpm',
                 '8.1' => 'php8.1-fpm',
                 '8.2' => 'php8.2-fpm',
+                '8.3' => 'php8.3-fpm',
             ],
         ],
         'redis' => [
-            'ubuntu_18' => [
+            \App\Enums\OperatingSystem::UBUNTU20 => [
                 'latest' => 'redis',
             ],
-            'ubuntu_20' => [
+            \App\Enums\OperatingSystem::UBUNTU22 => [
                 'latest' => 'redis',
             ],
-            'ubuntu_22' => [
+            \App\Enums\OperatingSystem::UBUNTU24 => [
                 'latest' => 'redis',
             ],
         ],
         'supervisor' => [
-            'ubuntu_18' => [
+            \App\Enums\OperatingSystem::UBUNTU20 => [
                 'latest' => 'supervisor',
             ],
-            'ubuntu_20' => [
+            \App\Enums\OperatingSystem::UBUNTU22 => [
                 'latest' => 'supervisor',
             ],
-            'ubuntu_22' => [
+            \App\Enums\OperatingSystem::UBUNTU24 => [
                 'latest' => 'supervisor',
             ],
         ],
         'ufw' => [
-            'ubuntu_18' => [
+            \App\Enums\OperatingSystem::UBUNTU20 => [
                 'latest' => 'ufw',
             ],
-            'ubuntu_20' => [
+            \App\Enums\OperatingSystem::UBUNTU22 => [
                 'latest' => 'ufw',
             ],
-            'ubuntu_22' => [
+            \App\Enums\OperatingSystem::UBUNTU24 => [
                 'latest' => 'ufw',
+            ],
+        ],
+        'vito-agent' => [
+            \App\Enums\OperatingSystem::UBUNTU20 => [
+                'latest' => 'vito-agent',
+            ],
+            \App\Enums\OperatingSystem::UBUNTU22 => [
+                'latest' => 'vito-agent',
+            ],
+            \App\Enums\OperatingSystem::UBUNTU24 => [
+                'latest' => 'vito-agent',
             ],
         ],
     ],
@@ -263,13 +382,17 @@ return [
      */
     'site_types' => [
         \App\Enums\SiteType::PHP,
+        \App\Enums\SiteType::PHP_BLANK,
         \App\Enums\SiteType::LARAVEL,
         \App\Enums\SiteType::WORDPRESS,
+        \App\Enums\SiteType::PHPMYADMIN,
     ],
     'site_types_class' => [
-        \App\Enums\SiteType::PHP => PHPSite::class,
-        \App\Enums\SiteType::LARAVEL => Laravel::class,
-        \App\Enums\SiteType::WORDPRESS => Wordpress::class,
+        \App\Enums\SiteType::PHP => \App\SiteTypes\PHPSite::class,
+        \App\Enums\SiteType::PHP_BLANK => \App\SiteTypes\PHPBlank::class,
+        \App\Enums\SiteType::LARAVEL => \App\SiteTypes\Laravel::class,
+        \App\Enums\SiteType::WORDPRESS => \App\SiteTypes\Wordpress::class,
+        \App\Enums\SiteType::PHPMYADMIN => \App\SiteTypes\PHPMyAdmin::class,
     ],
 
     /*
@@ -279,12 +402,11 @@ return [
         'github',
         'gitlab',
         'bitbucket',
-        'custom',
     ],
     'source_control_providers_class' => [
-        'github' => Github::class,
-        'gitlab' => Gitlab::class,
-        'bitbucket' => Bitbucket::class,
+        'github' => \App\SourceControlProviders\Github::class,
+        'gitlab' => \App\SourceControlProviders\Gitlab::class,
+        'bitbucket' => \App\SourceControlProviders\Bitbucket::class,
     ],
 
     /*
@@ -320,11 +442,6 @@ return [
      * firewall
      */
     'firewall_protocols_port' => [
-        'ssh' => 22,
-        'http' => 80,
-        'https' => 443,
-        'mysql' => 3306,
-        'ftp' => 21,
         'tcp' => '',
         'udp' => '',
     ],
@@ -347,21 +464,80 @@ return [
         \App\Enums\NotificationChannel::TELEGRAM,
     ],
     'notification_channels_providers_class' => [
-        \App\Enums\NotificationChannel::SLACK => Slack::class,
-        \App\Enums\NotificationChannel::DISCORD => Discord::class,
-        \App\Enums\NotificationChannel::EMAIL => Email::class,
-        \App\Enums\NotificationChannel::TELEGRAM => Telegram::class,
+        \App\Enums\NotificationChannel::SLACK => \App\NotificationChannels\Slack::class,
+        \App\Enums\NotificationChannel::DISCORD => \App\NotificationChannels\Discord::class,
+        \App\Enums\NotificationChannel::EMAIL => \App\NotificationChannels\Email::class,
+        \App\Enums\NotificationChannel::TELEGRAM => \App\NotificationChannels\Telegram::class,
     ],
 
     /*
      * storage providers
      */
     'storage_providers' => [
-        'dropbox',
-        'ftp',
+        \App\Enums\StorageProvider::DROPBOX,
+        \App\Enums\StorageProvider::FTP,
+        \App\Enums\StorageProvider::LOCAL,
+        \App\Enums\StorageProvider::S3,
+        \App\Enums\StorageProvider::WASABI,
     ],
     'storage_providers_class' => [
-        'dropbox' => Dropbox::class,
-        'ftp' => FTP::class,
+        \App\Enums\StorageProvider::DROPBOX => \App\StorageProviders\Dropbox::class,
+        \App\Enums\StorageProvider::FTP => \App\StorageProviders\FTP::class,
+        \App\Enums\StorageProvider::LOCAL => \App\StorageProviders\Local::class,
+        \App\Enums\StorageProvider::S3 => \App\StorageProviders\S3::class,
+        \App\Enums\StorageProvider::WASABI => \App\StorageProviders\Wasabi::class,
+
+    ],
+
+    'ssl_types' => [
+        \App\Enums\SslType::LETSENCRYPT,
+        \App\Enums\SslType::CUSTOM,
+    ],
+
+    'metrics_data_retention' => [
+        7,
+        14,
+        30,
+        90,
+    ],
+
+    'tag_colors' => [
+        'slate',
+        'gray',
+        'red',
+        'orange',
+        'amber',
+        'yellow',
+        'lime',
+        'green',
+        'emerald',
+        'teal',
+        'cyan',
+        'sky',
+        'blue',
+        'indigo',
+        'violet',
+        'purple',
+        'fuchsia',
+        'pink',
+        'rose',
+    ],
+    'taggable_types' => [
+        \App\Models\Server::class,
+        \App\Models\Site::class,
+    ],
+
+    'user_roles' => [
+        \App\Enums\UserRole::USER,
+        \App\Enums\UserRole::ADMIN,
+    ],
+
+    'cronjob_intervals' => [
+        '* * * * *' => 'Every Minute',
+        '0 * * * *' => 'Hourly',
+        '0 0 * * *' => 'Daily',
+        '0 0 * * 0' => 'Weekly',
+        '0 0 1 * *' => 'Monthly',
+        'custom' => 'Custom',
     ],
 ];

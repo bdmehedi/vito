@@ -2,13 +2,17 @@
 
 namespace App\Enums;
 
-use BenSampo\Enum\Enum;
-
-final class CronjobStatus extends Enum
+final class CronjobStatus
 {
     const CREATING = 'creating';
 
     const READY = 'ready';
 
     const DELETING = 'deleting';
+
+    const ENABLING = 'enabling';
+
+    const DISABLING = 'disabling';
+
+    const DISABLED = 'disabled';
 }

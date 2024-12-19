@@ -5,15 +5,13 @@ namespace App\Actions\FirewallRule;
 use App\Enums\FirewallRuleStatus;
 use App\Models\FirewallRule;
 use App\Models\Server;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\ValidationException;
+use App\SSH\Services\Firewall\Firewall;
+use Illuminate\Validation\Rule;
 
 class CreateRule
 {
     public function create(Server $server, array $input): FirewallRule
     {
-        $this->validate($server, $input);
-
         $rule = new FirewallRule([
             'server_id' => $server->id,
             'type' => $input['type'],
@@ -21,27 +19,34 @@ class CreateRule
             'port' => $input['port'],
             'source' => $input['source'],
             'mask' => $input['mask'] ?? null,
-            'status' => FirewallRuleStatus::CREATING,
         ]);
+
+        /** @var Firewall $firewallHandler */
+        $firewallHandler = $server->firewall()->handler();
+        $firewallHandler->addRule(
+            $rule->type,
+            $rule->getRealProtocol(),
+            $rule->port,
+            $rule->source,
+            $rule->mask
+        );
+
+        $rule->status = FirewallRuleStatus::READY;
         $rule->save();
-        $rule->addToServer();
 
         return $rule;
     }
 
-    /**
-     * @throws ValidationException
-     */
-    private function validate(Server $server, array $input): void
+    public static function rules(): array
     {
-        Validator::make($input, [
+        return [
             'type' => [
                 'required',
                 'in:allow,deny',
             ],
             'protocol' => [
                 'required',
-                'in:'.implode(',', array_keys(config('core.firewall_protocols_port'))),
+                Rule::in(array_keys(config('core.firewall_protocols_port'))),
             ],
             'port' => [
                 'required',
@@ -54,8 +59,9 @@ class CreateRule
                 'ip',
             ],
             'mask' => [
+                'required',
                 'numeric',
             ],
-        ])->validateWithBag('createRule');
+        ];
     }
 }

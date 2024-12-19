@@ -3,10 +3,8 @@
 namespace App\StorageProviders;
 
 use App\Models\Server;
-use App\SSHCommands\Storage\DownloadFromFTPCommand;
-use App\SSHCommands\Storage\UploadToFTPCommand;
+use App\SSH\Storage\Storage;
 use FTP\Connection;
-use Throwable;
 
 class FTP extends AbstractStorageProvider
 {
@@ -14,7 +12,12 @@ class FTP extends AbstractStorageProvider
     {
         return [
             'host' => 'required',
-            'port' => 'required|numeric',
+            'port' => [
+                'required',
+                'integer',
+                'min:1',
+                'max:65535',
+            ],
             'path' => 'required',
             'username' => 'required',
             'password' => 'required',
@@ -43,54 +46,15 @@ class FTP extends AbstractStorageProvider
         $isConnected = $connection && $this->login($connection);
 
         if ($isConnected) {
-            ftp_close($connection);
+            \App\Facades\FTP::close($connection);
         }
 
         return $isConnected;
     }
 
-    /**
-     * @throws Throwable
-     */
-    public function upload(Server $server, string $src, string $dest): array
+    public function ssh(Server $server): Storage
     {
-        $server->ssh()->exec(
-            new UploadToFTPCommand(
-                $src,
-                $this->storageProvider->credentials['path'].'/'.$dest,
-                $this->storageProvider->credentials['host'],
-                $this->storageProvider->credentials['port'],
-                $this->storageProvider->credentials['username'],
-                $this->storageProvider->credentials['password'],
-                $this->storageProvider->credentials['ssl'],
-                $this->storageProvider->credentials['passive'],
-            ),
-            'upload-to-ftp'
-        );
-
-        return [
-            'size' => null,
-        ];
-    }
-
-    /**
-     * @throws Throwable
-     */
-    public function download(Server $server, string $src, string $dest): void
-    {
-        $server->ssh()->exec(
-            new DownloadFromFTPCommand(
-                $this->storageProvider->credentials['path'].'/'.$src,
-                $dest,
-                $this->storageProvider->credentials['host'],
-                $this->storageProvider->credentials['port'],
-                $this->storageProvider->credentials['username'],
-                $this->storageProvider->credentials['password'],
-                $this->storageProvider->credentials['ssl'],
-                $this->storageProvider->credentials['passive'],
-            ),
-            'download-from-ftp'
-        );
+        return new \App\SSH\Storage\FTP($server, $this->storageProvider);
     }
 
     public function delete(array $paths): void
@@ -99,31 +63,36 @@ class FTP extends AbstractStorageProvider
 
         if ($connection && $this->login($connection)) {
             if ($this->storageProvider->credentials['passive']) {
-                ftp_pasv($connection, true);
+                \App\Facades\FTP::passive($connection, true);
             }
 
             foreach ($paths as $path) {
-                ftp_delete($connection, $this->storageProvider->credentials['path'].'/'.$path);
+                \App\Facades\FTP::delete($connection, $this->storageProvider->credentials['path'].'/'.$path);
             }
         }
 
-        ftp_close($connection);
+        \App\Facades\FTP::close($connection);
     }
 
     private function connection(): bool|Connection
     {
         $credentials = $this->storageProvider->credentials;
-        if ($credentials['ssl']) {
-            return ftp_ssl_connect($credentials['host'], $credentials['port'], 5);
-        }
 
-        return ftp_connect($credentials['host'], $credentials['port'], 5);
+        return \App\Facades\FTP::connect(
+            $credentials['host'],
+            $credentials['port'],
+            $credentials['ssl']
+        );
     }
 
-    private function login(Connection $connection): bool
+    private function login(bool|Connection $connection): bool
     {
         $credentials = $this->storageProvider->credentials;
 
-        return ftp_login($connection, $credentials['username'], $credentials['password']);
+        return \App\Facades\FTP::login(
+            $credentials['username'],
+            $credentials['password'],
+            $connection
+        );
     }
 }

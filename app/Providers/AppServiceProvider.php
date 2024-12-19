@@ -2,12 +2,12 @@
 
 namespace App\Providers;
 
+use App\Helpers\FTP;
 use App\Helpers\Notifier;
 use App\Helpers\SSH;
-use App\Support\SocialiteProviders\DropboxProvider;
-use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Fortify\Fortify;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -16,12 +16,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        Fortify::ignoreRoutes();
     }
 
-    /**
-     * @throws BindingResolutionException
-     */
     public function boot(): void
     {
         ResourceCollection::withoutWrapping();
@@ -33,23 +30,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind('notifier', function () {
             return new Notifier;
         });
-
-        $this->extendSocialite();
-    }
-
-    /**
-     * @throws BindingResolutionException
-     */
-    private function extendSocialite(): void
-    {
-        $socialite = $this->app->make('Laravel\Socialite\Contracts\Factory');
-        $socialite->extend(
-            'dropbox',
-            function ($app) use ($socialite) {
-                $config = $app['config']['services.dropbox'];
-
-                return $socialite->buildProvider(DropboxProvider::class, $config);
-            }
-        );
+        $this->app->bind('ftp', function () {
+            return new FTP;
+        });
     }
 }

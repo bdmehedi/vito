@@ -5,16 +5,12 @@ namespace App\Actions\PHP;
 use App\Enums\ServiceStatus;
 use App\Models\Server;
 use App\Models\Service;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 
 class InstallNewPHP
 {
     public function install(Server $server, array $input): void
     {
-        $this->validate($server, $input);
-
         $php = new Service([
             'server_id' => $server->id,
             'type' => 'php',
@@ -28,25 +24,24 @@ class InstallNewPHP
             'is_default' => false,
         ]);
         $php->save();
-        $php->install();
+
+        dispatch(function () use ($php) {
+            $php->handler()->install();
+            $php->status = ServiceStatus::READY;
+            $php->save();
+        })->catch(function () use ($php) {
+            $php->delete();
+        })->onConnection('ssh');
     }
 
-    /**
-     * @throws ValidationException
-     */
-    private function validate(Server $server, array $input): void
+    public static function rules(Server $server): array
     {
-        Validator::make($input, [
+        return [
             'version' => [
                 'required',
                 Rule::in(config('core.php_versions')),
+                Rule::notIn($server->installedPHPVersions()),
             ],
-        ])->validateWithBag('installPHP');
-
-        if (in_array($input['version'], $server->installedPHPVersions())) {
-            throw ValidationException::withMessages(
-                ['version' => __('This version is already installed')]
-            )->errorBag('installPHP');
-        }
+        ];
     }
 }

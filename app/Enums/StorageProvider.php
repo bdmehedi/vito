@@ -2,11 +2,15 @@
 
 namespace App\Enums;
 
-use BenSampo\Enum\Enum;
-
-final class StorageProvider extends Enum
+final class StorageProvider
 {
     const DROPBOX = 'dropbox';
 
     const FTP = 'ftp';
+
+    const LOCAL = 'local';
+
+    const S3 = 's3';
+
+    const WASABI = 'wasabi';
 }

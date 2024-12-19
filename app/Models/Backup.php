@@ -2,12 +2,11 @@
 
 namespace App\Models;
 
-use App\Enums\BackupFileStatus;
-use App\Jobs\Backup\RunBackup;
+use App\Enums\BackupStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Str;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * @property string $type
@@ -48,9 +47,16 @@ class Backup extends AbstractModel
         parent::boot();
 
         static::deleting(function (Backup $backup) {
-            $backup->files()->delete();
+            $backup->files()->each(function (BackupFile $file) {
+                $file->delete();
+            });
         });
     }
+
+    public static array $statusColors = [
+        BackupStatus::RUNNING => 'success',
+        BackupStatus::FAILED => 'danger',
+    ];
 
     public function server(): BelongsTo
     {
@@ -64,7 +70,7 @@ class Backup extends AbstractModel
 
     public function database(): BelongsTo
     {
-        return $this->belongsTo(Database::class);
+        return $this->belongsTo(Database::class)->withTrashed();
     }
 
     public function files(): HasMany
@@ -72,15 +78,8 @@ class Backup extends AbstractModel
         return $this->hasMany(BackupFile::class, 'backup_id');
     }
 
-    public function run(): void
+    public function lastFile(): HasOne
     {
-        $file = new BackupFile([
-            'backup_id' => $this->id,
-            'name' => Str::of($this->database->name)->slug().'-'.now()->format('YmdHis'),
-            'status' => BackupFileStatus::CREATING,
-        ]);
-        $file->save();
-
-        dispatch(new RunBackup($file))->onConnection('ssh');
+        return $this->hasOne(BackupFile::class, 'backup_id')->latest();
     }
 }

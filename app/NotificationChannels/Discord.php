@@ -2,20 +2,20 @@
 
 namespace App\NotificationChannels;
 
-use App\Contracts\Notification;
+use App\Models\NotificationChannel;
+use App\Notifications\NotificationInterface;
+use App\Web\Pages\Settings\NotificationChannels\Index;
 use Illuminate\Support\Facades\Http;
 
 class Discord extends AbstractNotificationChannel
 {
-    public function channel(): string
-    {
-        return 'discord';
-    }
-
     public function createRules(array $input): array
     {
         return [
-            'webhook_url' => 'required|url',
+            'webhook_url' => [
+                'required',
+                'url',
+            ],
         ];
     }
 
@@ -39,7 +39,7 @@ class Discord extends AbstractNotificationChannel
             __('Congratulations! 🎉'),
             __("You've connected your Discord to :app", ['app' => config('app.name')])."\n".
             __('Manage your notification channels')."\n".
-            route('notification-channels')
+            Index::getUrl()
         );
 
         if (! $connect) {
@@ -60,11 +60,13 @@ class Discord extends AbstractNotificationChannel
             'content' => '*'.$subject.'*'."\n".$text,
         ]);
 
-        return $connect->ok();
+        return $connect->successful();
     }
 
-    public function send(object $notifiable, Notification $notification): void
+    public function send(object $notifiable, NotificationInterface $notification): void
     {
+        /** @var NotificationChannel $notifiable */
+        $this->notificationChannel = $notifiable;
         $data = $this->notificationChannel->data;
         Http::post($data['webhook_url'], [
             'content' => $notification->toSlack($notifiable),

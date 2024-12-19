@@ -2,9 +2,10 @@
 
 namespace App\Actions\Database;
 
+use App\Enums\DatabaseUserStatus;
 use App\Models\DatabaseUser;
 use App\Models\Server;
-use Illuminate\Support\Facades\Validator;
+use App\SSH\Services\Database\Database;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -15,8 +16,6 @@ class CreateDatabaseUser
      */
     public function create(Server $server, array $input, array $links = []): DatabaseUser
     {
-        $this->validate($server, $input);
-
         $databaseUser = new DatabaseUser([
             'server_id' => $server->id,
             'username' => $input['username'],
@@ -24,8 +23,19 @@ class CreateDatabaseUser
             'host' => isset($input['remote']) && $input['remote'] ? $input['host'] : 'localhost',
             'databases' => $links,
         ]);
+        /** @var Database $databaseHandler */
+        $databaseHandler = $server->database()->handler();
+        $databaseHandler->createUser(
+            $databaseUser->username,
+            $databaseUser->password,
+            $databaseUser->host
+        );
+        $databaseUser->status = DatabaseUserStatus::READY;
         $databaseUser->save();
-        $databaseUser->createOnServer();
+
+        if (count($links) > 0) {
+            app(LinkUser::class)->link($databaseUser, ['databases' => $links]);
+        }
 
         return $databaseUser;
     }
@@ -33,7 +43,7 @@ class CreateDatabaseUser
     /**
      * @throws ValidationException
      */
-    private function validate(Server $server, array $input): void
+    public static function rules(Server $server, array $input): array
     {
         $rules = [
             'username' => [
@@ -49,6 +59,7 @@ class CreateDatabaseUser
         if (isset($input['remote']) && $input['remote']) {
             $rules['host'] = 'required';
         }
-        Validator::make($input, $rules)->validate();
+
+        return $rules;
     }
 }

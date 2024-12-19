@@ -2,29 +2,18 @@
 
 namespace App\Models;
 
-use App\Contracts\SiteType;
-use App\Enums\DeploymentStatus;
 use App\Enums\SiteStatus;
-use App\Enums\SslStatus;
-use App\Events\Broadcast;
 use App\Exceptions\SourceControlIsNotConnected;
-use App\Facades\Notifier;
-use App\Jobs\Site\ChangePHPVersion;
-use App\Jobs\Site\Deploy;
-use App\Jobs\Site\DeployEnv;
-use App\Jobs\Site\UpdateBranch;
-use App\Notifications\SiteInstallationFailed;
-use App\Notifications\SiteInstallationSucceed;
-use Exception;
+use App\Exceptions\SSHError;
+use App\SiteTypes\SiteType;
+use App\SSH\Services\Webserver\Webserver;
+use App\Traits\HasProjectThroughServer;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Support\Str;
-use Throwable;
 
 /**
  * @property int $server_id
@@ -33,7 +22,6 @@ use Throwable;
  * @property string $domain
  * @property array $aliases
  * @property string $web_directory
- * @property string $web_directory_path
  * @property string $path
  * @property string $php_version
  * @property string $source_control
@@ -44,26 +32,21 @@ use Throwable;
  * @property string $status
  * @property int $port
  * @property int $progress
- * @property bool $auto_deployment
- * @property string $url
  * @property Server $server
  * @property ServerLog[] $logs
  * @property Deployment[] $deployments
  * @property ?GitHook $gitHook
  * @property DeploymentScript $deploymentScript
- * @property Redirect[] $redirects
  * @property Queue[] $queues
  * @property Ssl[] $ssls
  * @property ?Ssl $activeSsl
- * @property string $full_repository_url
- * @property string $aliases_string
- * @property string $deployment_script_text
- * @property string $env
  * @property string $ssh_key_name
+ * @property ?SourceControl $sourceControl
  */
 class Site extends AbstractModel
 {
     use HasFactory;
+    use HasProjectThroughServer;
 
     protected $fillable = [
         'server_id',
@@ -89,14 +72,15 @@ class Site extends AbstractModel
         'type_data' => 'json',
         'port' => 'integer',
         'progress' => 'integer',
-        'auto_deployment' => 'boolean',
         'aliases' => 'array',
         'source_control_id' => 'integer',
     ];
 
-    protected $appends = [
-        'url',
-        'auto_deployment',
+    public static array $statusColors = [
+        SiteStatus::READY => 'success',
+        SiteStatus::INSTALLING => 'warning',
+        SiteStatus::INSTALLATION_FAILED => 'danger',
+        SiteStatus::DELETING => 'danger',
     ];
 
     public static function boot(): void
@@ -104,8 +88,7 @@ class Site extends AbstractModel
         parent::boot();
 
         static::deleting(function (Site $site) {
-            $site->redirects()->delete();
-            $site->queues()->delete();
+            $site->queues()->each(fn (Queue $queue) => $queue->delete());
             $site->ssls()->delete();
             $site->deployments()->delete();
             $site->deploymentScript()->delete();
@@ -117,6 +100,21 @@ class Site extends AbstractModel
                 'content' => '',
             ]);
         });
+    }
+
+    public function isReady(): bool
+    {
+        return $this->status === SiteStatus::READY;
+    }
+
+    public function isInstalling(): bool
+    {
+        return in_array($this->status, [SiteStatus::INSTALLING, SiteStatus::INSTALLATION_FAILED]);
+    }
+
+    public function isInstallationFailed(): bool
+    {
+        return $this->status === SiteStatus::INSTALLATION_FAILED;
     }
 
     public function server(): BelongsTo
@@ -144,11 +142,6 @@ class Site extends AbstractModel
         return $this->hasOne(DeploymentScript::class);
     }
 
-    public function redirects(): HasMany
-    {
-        return $this->hasMany(Redirect::class);
-    }
-
     public function queues(): HasMany
     {
         return $this->hasMany(Queue::class);
@@ -159,41 +152,22 @@ class Site extends AbstractModel
         return $this->hasMany(Ssl::class);
     }
 
-    /**
-     * @throws SourceControlIsNotConnected
-     */
-    public function sourceControl(): SourceControl|HasOne|null|Model
+    public function tags(): MorphToMany
     {
-        $sourceControl = null;
-
-        if (! $this->source_control && ! $this->source_control_id) {
-            return null;
-        }
-
-        if ($this->source_control) {
-            $sourceControl = SourceControl::query()->where('provider', $this->source_control)->first();
-        }
-
-        if ($this->source_control_id) {
-            $sourceControl = SourceControl::query()->find($this->source_control_id);
-        }
-
-        if (! $sourceControl) {
-            throw new SourceControlIsNotConnected($this->source_control);
-        }
-
-        return $sourceControl;
+        return $this->morphToMany(Tag::class, 'taggable');
     }
 
-    /**
-     * @throws SourceControlIsNotConnected
-     */
-    public function getFullRepositoryUrlAttribute()
+    public function sourceControl(): BelongsTo
     {
-        return $this->sourceControl()->provider()->fullRepoUrl($this->repository, $this->ssh_key_name);
+        return $this->belongsTo(SourceControl::class)->withTrashed();
     }
 
-    public function getAliasesStringAttribute(): string
+    public function getFullRepositoryUrl(): ?string
+    {
+        return $this->sourceControl?->provider()?->fullRepoUrl($this->repository, $this->getSshKeyName());
+    }
+
+    public function getAliasesString(): string
     {
         if (count($this->aliases) > 0) {
             return implode(' ', $this->aliases);
@@ -209,19 +183,6 @@ class Site extends AbstractModel
         return new $typeClass($this);
     }
 
-    public function install(): void
-    {
-        $this->type()->install();
-    }
-
-    public function remove(): void
-    {
-        $this->update([
-            'status' => SiteStatus::DELETING,
-        ]);
-        $this->type()->delete();
-    }
-
     public function php(): ?Service
     {
         if ($this->php_version) {
@@ -233,63 +194,11 @@ class Site extends AbstractModel
 
     public function changePHPVersion($version): void
     {
-        dispatch(new ChangePHPVersion($this, $version))->onConnection('ssh');
-    }
-
-    public function getDeploymentScriptTextAttribute(): string
-    {
-        /* @var DeploymentScript $script */
-        $script = $this->deploymentScript()->firstOrCreate([
-            'site_id' => $this->id,
-        ], [
-            'site_id' => $this->id,
-            'name' => 'default',
-        ]);
-
-        return $script->content;
-    }
-
-    /**
-     * @throws SourceControlIsNotConnected
-     */
-    public function deploy(): Deployment
-    {
-        if ($this->sourceControl()) {
-            $this->sourceControl()->getRepo($this->repository);
-        }
-
-        $deployment = new Deployment([
-            'site_id' => $this->id,
-            'deployment_script_id' => $this->deploymentScript->id,
-            'status' => DeploymentStatus::DEPLOYING,
-        ]);
-        $lastCommit = $this->sourceControl()->provider()->getLastCommit($this->repository, $this->branch);
-        if ($lastCommit) {
-            $deployment->commit_id = $lastCommit['commit_id'];
-            $deployment->commit_data = $lastCommit['commit_data'];
-        }
-        $deployment->save();
-
-        dispatch(new Deploy($deployment, $this->path))->onConnection('ssh');
-
-        return $deployment;
-    }
-
-    public function getEnvAttribute(): string
-    {
-        $typeData = $this->type_data;
-        if (! isset($typeData['env'])) {
-            $typeData['env'] = '';
-            $this->type_data = $typeData;
-            $this->save();
-        }
-
-        return $typeData['env'];
-    }
-
-    public function deployEnv(): void
-    {
-        dispatch(new DeployEnv($this))->onConnection('ssh');
+        /** @var Webserver $handler */
+        $handler = $this->server->webserver()->handler();
+        $handler->changePHPVersion($this, $version);
+        $this->php_version = $version;
+        $this->save();
     }
 
     public function activeSsl(): HasOne
@@ -299,33 +208,7 @@ class Site extends AbstractModel
             ->orderByDesc('id');
     }
 
-    public function createFreeSsl(): void
-    {
-        $ssl = new Ssl([
-            'site_id' => $this->id,
-            'type' => 'letsencrypt',
-            'expires_at' => now()->addMonths(3),
-            'status' => SslStatus::CREATING,
-        ]);
-        $ssl->save();
-        $ssl->deploy();
-    }
-
-    public function createCustomSsl(string $certificate, string $pk): void
-    {
-        $ssl = new Ssl([
-            'site_id' => $this->id,
-            'type' => 'custom',
-            'certificate' => $certificate,
-            'pk' => $pk,
-            'expires_at' => '',
-            'status' => SslStatus::CREATING,
-        ]);
-        $ssl->save();
-        $ssl->deploy();
-    }
-
-    public function getUrlAttribute(): string
+    public function getUrl(): string
     {
         if ($this->activeSsl) {
             return 'https://'.$this->domain;
@@ -334,7 +217,7 @@ class Site extends AbstractModel
         return 'http://'.$this->domain;
     }
 
-    public function getWebDirectoryPathAttribute(): string
+    public function getWebDirectoryPath(): string
     {
         if ($this->web_directory) {
             return $this->path.'/'.$this->web_directory;
@@ -345,7 +228,6 @@ class Site extends AbstractModel
 
     /**
      * @throws SourceControlIsNotConnected
-     * @throws Throwable
      */
     public function enableAutoDeployment(): void
     {
@@ -353,84 +235,41 @@ class Site extends AbstractModel
             return;
         }
 
-        if (! $this->sourceControl()) {
+        if (! $this->sourceControl?->getRepo($this->repository)) {
             throw new SourceControlIsNotConnected($this->source_control);
         }
 
-        try {
-            DB::beginTransaction();
-            $gitHook = new GitHook([
-                'site_id' => $this->id,
-                'source_control_id' => $this->sourceControl()->id,
-                'secret' => Str::uuid()->toString(),
-                'actions' => ['deploy'],
-                'events' => ['push'],
-            ]);
-            $gitHook->save();
-            $gitHook->deployHook();
-            DB::commit();
-        } catch (Exception $e) {
-            DB::rollBack();
-            throw $e;
-        }
+        $gitHook = new GitHook([
+            'site_id' => $this->id,
+            'source_control_id' => $this->source_control_id,
+            'secret' => Str::uuid()->toString(),
+            'actions' => ['deploy'],
+            'events' => ['push'],
+        ]);
+        $gitHook->save();
+        $gitHook->deployHook();
     }
 
     /**
-     * @throws Throwable
+     * @throws SourceControlIsNotConnected
      */
     public function disableAutoDeployment(): void
     {
+        if (! $this->sourceControl?->getRepo($this->repository)) {
+            throw new SourceControlIsNotConnected($this->source_control);
+        }
+
         $this->gitHook?->destroyHook();
     }
 
-    public function getAutoDeploymentAttribute(): bool
+    public function isAutoDeployment(): bool
     {
         return (bool) $this->gitHook;
     }
 
-    public function updateBranch(string $branch): void
-    {
-        dispatch(new UpdateBranch($this, $branch))->onConnection('ssh');
-    }
-
-    public function getSshKeyNameAttribute(): string
+    public function getSshKeyName(): string
     {
         return str('site_'.$this->id)->toString();
-    }
-
-    public function installationFinished(): void
-    {
-        $this->update([
-            'status' => SiteStatus::READY,
-            'progress' => 100,
-        ]);
-        event(
-            new Broadcast('install-site-finished', [
-                'site' => $this,
-            ])
-        );
-        Notifier::send($this, new SiteInstallationSucceed($this));
-    }
-
-    /**
-     * @throws Throwable
-     */
-    public function installationFailed(Throwable $e): void
-    {
-        $this->update([
-            'status' => SiteStatus::INSTALLATION_FAILED,
-        ]);
-        event(
-            new Broadcast('install-site-failed', [
-                'site' => $this,
-            ])
-        );
-        Notifier::send($this, new SiteInstallationFailed($this));
-        Log::error('install-site-error', [
-            'error' => (string) $e,
-        ]);
-
-        throw $e;
     }
 
     public function hasFeature(string $feature): bool
@@ -438,8 +277,30 @@ class Site extends AbstractModel
         return in_array($feature, $this->type()->supportedFeatures());
     }
 
-    public function isReady(): bool
+    public function getEnv(): string
     {
-        return $this->status === SiteStatus::READY;
+        try {
+            return $this->server->os()->readFile($this->path.'/.env');
+        } catch (SSHError) {
+            return '';
+        }
+    }
+
+    public function hasSSL(): bool
+    {
+        return $this->ssls->isNotEmpty();
+    }
+
+    public function environmentVariables(?Deployment $deployment = null): array
+    {
+        return [
+            'SITE_PATH' => $this->path,
+            'DOMAIN' => $this->domain,
+            'BRANCH' => $this->branch ?? '',
+            'REPOSITORY' => $this->repository ?? '',
+            'COMMIT_ID' => $deployment?->commit_id ?? '',
+            'PHP_VERSION' => $this->php_version,
+            'PHP_PATH' => '/usr/bin/php'.$this->php_version,
+        ];
     }
 }

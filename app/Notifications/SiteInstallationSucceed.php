@@ -7,9 +7,7 @@ use Illuminate\Notifications\Messages\MailMessage;
 
 class SiteInstallationSucceed extends AbstractNotification
 {
-    public function __construct(protected Site $site)
-    {
-    }
+    public function __construct(protected Site $site) {}
 
     public function rawText(): string
     {
@@ -18,7 +16,7 @@ class SiteInstallationSucceed extends AbstractNotification
         ]);
     }
 
-    public function toMail(object $notifiable): MailMessage
+    public function toEmail(object $notifiable): MailMessage
     {
         return (new MailMessage)
             ->subject(__('Site installation succeed!'))

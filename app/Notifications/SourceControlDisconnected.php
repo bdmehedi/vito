@@ -7,9 +7,7 @@ use Illuminate\Notifications\Messages\MailMessage;
 
 class SourceControlDisconnected extends AbstractNotification
 {
-    public function __construct(protected SourceControl $sourceControl)
-    {
-    }
+    public function __construct(protected SourceControl $sourceControl) {}
 
     public function rawText(): string
     {
@@ -18,7 +16,7 @@ class SourceControlDisconnected extends AbstractNotification
         ]);
     }
 
-    public function toMail(object $notifiable): MailMessage
+    public function toEmail(object $notifiable): MailMessage
     {
         return (new MailMessage)
             ->subject(__('Source control disconnected!'))

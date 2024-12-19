@@ -2,7 +2,7 @@
 
 namespace App\Notifications;
 
-use App\Contracts\Notification as NotificationInterface;
+use App\Models\NotificationChannel;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -13,9 +13,16 @@ abstract class AbstractNotification extends Notification implements Notification
 {
     use Queueable, SerializesModels;
 
-    public function toMail(object $notifiable): MailMessage
+    public function via(object $notifiable): string
     {
-        return (new MailMessage())
+        /** @var NotificationChannel $notifiable */
+        return get_class($notifiable->provider());
+    }
+
+    public function toEmail(object $notifiable): MailMessage
+    {
+        return (new MailMessage)
+            ->subject('Notification')
             ->line($this->rawText());
     }
 

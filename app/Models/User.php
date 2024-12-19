@@ -2,14 +2,20 @@
 
 namespace App\Models;
 
+use App\Enums\UserRole;
+use App\Traits\HasTimezoneTimestamps;
+use Carbon\Carbon;
+use Filament\Models\Contracts\FilamentUser;
+use Filament\Panel;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
 use Laravel\Fortify\TwoFactorAuthenticatable;
-use Laravel\Sanctum\HasApiTokens;
 
 /**
  * @property int $id
@@ -31,11 +37,14 @@ use Laravel\Sanctum\HasApiTokens;
  * @property int $current_project_id
  * @property Project $currentProject
  * @property Collection<Project> $projects
+ * @property string $role
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
  */
-class User extends Authenticatable
+class User extends Authenticatable implements FilamentUser
 {
-    use HasApiTokens;
     use HasFactory;
+    use HasTimezoneTimestamps;
     use Notifiable;
     use TwoFactorAuthenticatable;
 
@@ -45,6 +54,7 @@ class User extends Authenticatable
         'password',
         'timezone',
         'current_project_id',
+        'role',
     ];
 
     protected $hidden = [
@@ -62,7 +72,9 @@ class User extends Authenticatable
         parent::boot();
 
         static::created(function (User $user) {
-            $user->createDefaultProject();
+            if (Project::count() === 0) {
+                $user->createDefaultProject();
+            }
         });
     }
 
@@ -86,11 +98,6 @@ class User extends Authenticatable
         return $this->hasMany(ServerProvider::class);
     }
 
-    public function scripts(): HasMany
-    {
-        return $this->hasMany(Script::class, 'user_id');
-    }
-
     public function sourceControl(string $provider): HasOne
     {
         return $this->hasOne(SourceControl::class)->where('provider', $provider);
@@ -106,27 +113,9 @@ class User extends Authenticatable
         return $this->hasOne(StorageProvider::class)->where('provider', $provider);
     }
 
-    public function connectedStorageProviders(): HasMany
+    public function projects(): BelongsToMany
     {
-        return $this->storageProviders()->where('connected', true);
-    }
-
-    public function connectedSourceControls(): array
-    {
-        $connectedSourceControls = [];
-        $sourceControls = $this->sourceControls()
-            ->where('connected', 1)
-            ->get(['provider']);
-        foreach ($sourceControls as $sourceControl) {
-            $connectedSourceControls[] = $sourceControl->provider;
-        }
-
-        return $connectedSourceControls;
-    }
-
-    public function projects(): HasMany
-    {
-        return $this->hasMany(Project::class);
+        return $this->belongsToMany(Project::class, 'user_project')->withTimestamps();
     }
 
     public function currentProject(): HasOne
@@ -134,25 +123,45 @@ class User extends Authenticatable
         return $this->HasOne(Project::class, 'id', 'current_project_id');
     }
 
-    public function isMemberOfProject(Project $project): bool
-    {
-        return $project->user_id === $this->id;
-    }
-
     public function createDefaultProject(): Project
     {
         $project = $this->projects()->first();
 
         if (! $project) {
-            $project = new Project();
-            $project->user_id = $this->id;
-            $project->name = 'Default';
+            $project = new Project;
+            $project->name = 'default';
             $project->save();
+
+            $project->users()->attach($this->id);
         }
 
         $this->current_project_id = $project->id;
         $this->save();
 
         return $project;
+    }
+
+    public function isAdmin(): bool
+    {
+        return $this->role === UserRole::ADMIN;
+    }
+
+    public function scripts(): HasMany
+    {
+        return $this->hasMany(Script::class);
+    }
+
+    public function allServers(): Builder
+    {
+        return Server::query()->whereHas('project', function (Builder $query) {
+            $query->whereHas('users', function ($query) {
+                $query->where('user_id', $this->id);
+            });
+        });
+    }
+
+    public function canAccessPanel(Panel $panel): bool
+    {
+        return true;
     }
 }

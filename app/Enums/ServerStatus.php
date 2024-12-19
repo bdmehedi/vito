@@ -2,9 +2,7 @@
 
 namespace App\Enums;
 
-use BenSampo\Enum\Enum;
-
-final class ServerStatus extends Enum
+final class ServerStatus
 {
     const READY = 'ready';
 
@@ -13,4 +11,6 @@ final class ServerStatus extends Enum
     const INSTALLATION_FAILED = 'installation_failed';
 
     const DISCONNECTED = 'disconnected';
+
+    const UPDATING = 'updating';
 }

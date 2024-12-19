@@ -2,9 +2,9 @@
 
 namespace App\NotificationChannels;
 
-use App\Contracts\Notification;
-use App\Mail\NotificationMail;
 use App\Models\NotificationChannel;
+use App\NotificationChannels\Email\NotificationMail;
+use App\Notifications\NotificationInterface;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
 
@@ -13,7 +13,10 @@ class Email extends AbstractNotificationChannel
     public function createRules(array $input): array
     {
         return [
-            'email' => 'required|email',
+            'email' => [
+                'required',
+                'email',
+            ],
         ];
     }
 
@@ -35,7 +38,10 @@ class Email extends AbstractNotificationChannel
     {
         try {
             Mail::to($this->data()['email'])->send(
-                new NotificationMail('Test VitoDeploy', 'This is a test email!')
+                new NotificationMail(
+                    'Connected to VitoDeploy',
+                    'This email confirms that you have connected your email to VitoDeploy.'
+                )
             );
         } catch (Throwable) {
             return false;
@@ -44,12 +50,11 @@ class Email extends AbstractNotificationChannel
         return true;
     }
 
-    public function send(object $notifiable, Notification $notification): void
+    public function send(object $notifiable, NotificationInterface $notification): void
     {
         /** @var NotificationChannel $notifiable */
         $this->notificationChannel = $notifiable;
-        $message = $notification->toMail($notifiable);
-
+        $message = $notification->toEmail($notifiable);
         Mail::to($this->data()['email'])->send(
             new NotificationMail($message->subject, $message->render())
         );

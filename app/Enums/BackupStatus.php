@@ -2,15 +2,9 @@
 
 namespace App\Enums;
 
-use BenSampo\Enum\Enum;
-
-final class BackupStatus extends Enum
+final class BackupStatus
 {
-    const READY = 'ready';
-
     const RUNNING = 'running';
 
     const FAILED = 'failed';
-
-    const DELETING = 'deleting';
 }

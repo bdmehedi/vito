@@ -6,7 +6,7 @@ use App\Enums\QueueStatus;
 use App\Models\Queue;
 use App\Models\Server;
 use App\Models\Site;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class CreateQueue
@@ -16,42 +16,48 @@ class CreateQueue
      */
     public function create(mixed $queueable, array $input): void
     {
-        $this->validate($input);
-
         $queue = new Queue([
             'server_id' => $queueable instanceof Server ? $queueable->id : $queueable->server_id,
             'site_id' => $queueable instanceof Site ? $queueable->id : null,
             'command' => $input['command'],
             'user' => $input['user'],
-            'auto_start' => $input['auto_start'],
-            'auto_restart' => $input['auto_restart'],
+            'auto_start' => $input['auto_start'] ? 1 : 0,
+            'auto_restart' => $input['auto_restart'] ? 1 : 0,
             'numprocs' => $input['numprocs'],
             'status' => QueueStatus::CREATING,
         ]);
         $queue->save();
-        $queue->deploy();
+
+        dispatch(function () use ($queue) {
+            $queue->server->processManager()->handler()->create(
+                $queue->id,
+                $queue->command,
+                $queue->user,
+                $queue->auto_start,
+                $queue->auto_restart,
+                $queue->numprocs,
+                $queue->getLogFile(),
+                $queue->site_id
+            );
+            $queue->status = QueueStatus::RUNNING;
+            $queue->save();
+        })->catch(function () use ($queue) {
+            $queue->delete();
+        })->onConnection('ssh');
     }
 
-    /**
-     * @throws ValidationException
-     */
-    protected function validate(array $input): void
+    public static function rules(Server $server): array
     {
-        $rules = [
+        return [
             'command' => [
                 'required',
             ],
             'user' => [
                 'required',
-                'in:root,'.config('core.ssh_user'),
-            ],
-            'auto_start' => [
-                'required',
-                'in:0,1',
-            ],
-            'auto_restart' => [
-                'required',
-                'in:0,1',
+                Rule::in([
+                    'root',
+                    $server->ssh_user,
+                ]),
             ],
             'numprocs' => [
                 'required',
@@ -59,7 +65,5 @@ class CreateQueue
                 'min:1',
             ],
         ];
-
-        Validator::make($input, $rules)->validateWithBag('createQueue');
     }
 }

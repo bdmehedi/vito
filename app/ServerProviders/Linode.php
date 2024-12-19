@@ -13,11 +13,9 @@ class Linode extends AbstractProvider
 {
     protected string $apiUrl = 'https://api.linode.com/v4';
 
-    public function createValidationRules($input): array
+    public function createRules($input): array
     {
-        $rules = [
-            'os' => 'required|in:'.implode(',', config('core.operating_systems')),
-        ];
+        $rules = [];
         // plans
         $plans = [];
         foreach (config('serverproviders.linode.plans') as $plan) {
@@ -69,14 +67,18 @@ class Linode extends AbstractProvider
         return true;
     }
 
-    public function plans(): array
+    public function plans(?string $region): array
     {
-        return config('serverproviders.linode.plans');
+        return collect(config('serverproviders.linode.plans'))
+            ->mapWithKeys(fn ($value) => [$value['value'] => $value['title']])
+            ->toArray();
     }
 
     public function regions(): array
     {
-        return config('serverproviders.linode.regions');
+        return collect(config('serverproviders.linode.regions'))
+            ->mapWithKeys(fn ($value) => [$value['value'] => $value['title']])
+            ->toArray();
     }
 
     /**
